@@ -1,0 +1,26 @@
+# Secrets - never bake into image
+.env
+
+# Dev only
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+
+# Local outputs
+output/
+test*.pdf
+
+# Docs / IDE files
+GEMINI.md
+SKILLS.md
+tasks/
+.gitignore
+README.md
+
+# Infra (not needed at runtime)
+infra/
+
+# IDE
+.idea/
+.vscode/

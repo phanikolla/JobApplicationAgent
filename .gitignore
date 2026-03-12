@@ -1,0 +1,28 @@
+# Environment & Secrets
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+venv/
+.venv/
+env/
+*.egg-info/
+
+# Output (regenerated each run)
+output/
+
+# Local test artifacts (exclude, but keep master resume)
+test*.pdf
+!Phani_Kumar_Kolla_profile.pdf
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db

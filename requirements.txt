@@ -1,0 +1,9 @@
+python-dotenv
+pdfplumber
+playwright
+beautifulsoup4
+markdown
+langchain-core
+langchain-google-genai
+langchain-openai
+langgraph

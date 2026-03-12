@@ -1,0 +1,103 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: ECS Fargate Cluster and Task Definition for AI Job Application Agent
+
+Parameters:
+  ImageUri:
+    Type: String
+    Description: Full ECR image URI (e.g. 123456789.dkr.ecr.ap-south-1.amazonaws.com/job-application-agent:latest)
+  GeminiApiKey:
+    Type: String
+    NoEcho: true
+    Description: Gemini API Key (stored in SSM Parameter Store)
+  EmailSender:
+    Type: String
+    Description: Gmail address used to send email
+  EmailAppPassword:
+    Type: String
+    NoEcho: true
+    Description: Gmail app password (stored in SSM Parameter Store)
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Public subnet ID for the Fargate task
+  SecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: Security group ID (needs outbound internet access)
+
+Resources:
+
+  # CloudWatch Log Group
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/job-application-agent
+      RetentionInDays: 7
+
+  # IAM Execution Role (allows ECS to pull image + write logs)
+  ECSExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: JobAgentECSExecutionRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  # ECS Cluster
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: job-agent-cluster
+
+  # Task Definition
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: job-application-agent
+      Cpu: '512'         # 0.5 vCPU
+      Memory: '1024'     # 1 GB
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn: !GetAtt ECSExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: job-agent
+          Image: !Ref ImageUri
+          Essential: true
+          Environment:
+            - Name: RESUME_PATH
+              Value: /app/Phani_Kumar_Kolla_profile.pdf
+            - Name: GEMINI_API_KEY
+              Value: !Ref GeminiApiKey
+            - Name: EMAIL_SENDER
+              Value: !Ref EmailSender
+            - Name: EMAIL_APP_PASSWORD
+              Value: !Ref EmailAppPassword
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: /ecs/job-application-agent
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+
+Outputs:
+  ClusterName:
+    Value: !Ref ECSCluster
+    Export:
+      Name: JobAgentClusterName
+  TaskDefinitionArn:
+    Value: !Ref TaskDefinition
+    Export:
+      Name: JobAgentTaskDefinitionArn
+  SubnetId:
+    Value: !Ref SubnetId
+    Export:
+      Name: JobAgentSubnetId
+  SecurityGroupId:
+    Value: !Ref SecurityGroupId
+    Export:
+      Name: JobAgentSecurityGroupId

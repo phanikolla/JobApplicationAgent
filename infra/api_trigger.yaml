@@ -1,0 +1,146 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: API Gateway + Lambda trigger for the AI Job Application Agent
+
+Parameters:
+  TriggerToken:
+    Type: String
+    NoEcho: true
+    Description: Secret token required in the URL to authorize the trigger (e.g. a random UUID)
+
+Resources:
+
+  # IAM Role for Lambda to call ECS RunTask
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: JobAgentLambdaRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: AllowECSRunTask
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecs:RunTask
+                  - iam:PassRole
+                Resource: '*'
+
+  # Lambda Function - fires ECS task
+  TriggerLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: job-agent-trigger
+      Runtime: python3.11
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 15
+      Environment:
+        Variables:
+          CLUSTER_NAME: !ImportValue JobAgentClusterName
+          TASK_DEFINITION: !ImportValue JobAgentTaskDefinitionArn
+          SUBNET_ID: !ImportValue JobAgentSubnetId
+          SECURITY_GROUP_ID: !ImportValue JobAgentSecurityGroupId
+          TRIGGER_TOKEN: !Ref TriggerToken
+      Code:
+        ZipFile: |
+          import boto3
+          import os
+          import json
+
+          ecs = boto3.client('ecs')
+
+          def handler(event, context):
+              # Validate secret token from query string
+              params = event.get('queryStringParameters') or {}
+              token = params.get('token', '')
+
+              if token != os.environ['TRIGGER_TOKEN']:
+                  return {
+                      'statusCode': 403,
+                      'headers': {'Content-Type': 'text/html'},
+                      'body': '<h2>403 Forbidden</h2><p>Invalid or missing token.</p>'
+                  }
+
+              # Fire the ECS Fargate task
+              ecs.run_task(
+                  cluster=os.environ['CLUSTER_NAME'],
+                  taskDefinition=os.environ['TASK_DEFINITION'],
+                  launchType='FARGATE',
+                  networkConfiguration={
+                      'awsvpcConfiguration': {
+                          'subnets': [os.environ['SUBNET_ID']],
+                          'securityGroups': [os.environ['SECURITY_GROUP_ID']],
+                          'assignPublicIp': 'ENABLED'
+                      }
+                  }
+              )
+
+              return {
+                  'statusCode': 200,
+                  'headers': {'Content-Type': 'text/html'},
+                  'body': '''
+                      <html><body style="font-family:sans-serif;text-align:center;padding:60px">
+                      <h1>&#x1F680; Agent Triggered!</h1>
+                      <p>The Job Application Agent is running.</p>
+                      <p>Check your email at <strong>pkkolla24@gmail.com</strong> in ~10 minutes.</p>
+                      </body></html>
+                  '''
+              }
+
+  # API Gateway (HTTP API - cheaper than REST API)
+  HttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: job-agent-api
+      ProtocolType: HTTP
+      Description: Trigger endpoint for AI Job Application Agent
+
+  # Lambda integration
+  LambdaIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub
+        - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations
+        - LambdaArn: !GetAtt TriggerLambda.Arn
+      PayloadFormatVersion: '2.0'
+
+  # Route: GET /trigger
+  TriggerRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: GET /trigger
+      Target: !Sub integrations/${LambdaIntegration}
+
+  # Deploy the API
+  HttpApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref HttpApi
+      StageName: prod
+      AutoDeploy: true
+
+  # Allow API Gateway to invoke the Lambda
+  LambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref TriggerLambda
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/trigger"
+
+Outputs:
+  TriggerUrl:
+    Description: Bookmark this URL on your phone to trigger the agent
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/prod/trigger?token=${TriggerToken}"
