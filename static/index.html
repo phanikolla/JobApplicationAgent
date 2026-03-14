@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Job Application Agent</title>
+    <meta name="description" content="Automated AI-powered job application agent with resume tailoring and auto-apply">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <!-- Animated Background Grid -->
+    <div class="bg-grid"></div>
+
+    <!-- Header -->
+    <header class="header" id="header">
+        <div class="header-left">
+            <div class="logo">
+                <span class="logo-icon">&#x1F680;</span>
+                <h1>Job Agent</h1>
+            </div>
+            <span class="version-badge">v2.0</span>
+        </div>
+        <div class="header-right">
+            <div class="status-indicator" id="statusIndicator">
+                <span class="status-dot"></span>
+                <span class="status-text">Idle</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="main-content">
+
+        <!-- ===== Tab Navigation ===== -->
+        <nav class="tab-nav" id="tabNav">
+            <button class="tab-btn active" data-tab="tailor" onclick="switchTab('tailor')">
+                <span class="tab-icon">&#x26A1;</span>
+                <span class="tab-label">Quick Tailor</span>
+                <span class="tab-hint">URL or paste JD</span>
+            </button>
+            <button class="tab-btn" data-tab="apply" onclick="switchTab('apply')">
+                <span class="tab-icon">&#x1F4E8;</span>
+                <span class="tab-label">Auto Apply</span>
+                <span class="tab-hint">Fill forms & submit</span>
+            </button>
+            <button class="tab-btn" data-tab="pipeline" onclick="switchTab('pipeline')">
+                <span class="tab-icon">&#x1F916;</span>
+                <span class="tab-label">Auto Pipeline</span>
+                <span class="tab-hint">Full automation</span>
+            </button>
+            <div class="tab-indicator" id="tabIndicator"></div>
+        </nav>
+
+        <!-- ===== Tab: Quick Tailor ===== -->
+        <section class="tab-panel active" id="panel-tailor">
+            <div class="card hero-card">
+                <div class="card-header">
+                    <h2><span class="card-icon">&#x26A1;</span> Quick Tailor</h2>
+                    <span class="card-subtitle">Paste a job URL or description to get a tailored resume</span>
+                </div>
+                <div class="card-body">
+                    <!-- Input Mode Toggle -->
+                    <div class="input-mode-toggle">
+                        <button class="mode-btn active" id="modeUrl" onclick="setInputMode('url')">
+                            &#x1F517; Job URL
+                        </button>
+                        <button class="mode-btn" id="modeText" onclick="setInputMode('text')">
+                            &#x1F4DD; Paste JD
+                        </button>
+                    </div>
+
+                    <!-- URL Input -->
+                    <div class="input-area" id="urlInputArea">
+                        <div class="quick-tailor-input-group">
+                            <input 
+                                type="url" 
+                                id="jobUrlInput" 
+                                class="input-field url-input" 
+                                placeholder="https://www.linkedin.com/jobs/view/..." 
+                                autocomplete="off"
+                            >
+                            <button class="btn btn-primary btn-glow" id="quickTailorBtn" onclick="runSingleJob()">
+                                <span class="btn-text">&#x2728; Tailor Resume</span>
+                                <span class="btn-spinner hidden"></span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Text Input -->
+                    <div class="input-area hidden" id="textInputArea">
+                        <textarea 
+                            id="jobTextInput" 
+                            class="input-field jd-textarea" 
+                            rows="8" 
+                            placeholder="Paste the full job description here...&#10;&#10;Example:&#10;Job Title: Solutions Architect&#10;Company: Google&#10;Description: We are looking for..."
+                        ></textarea>
+                        <div style="display:flex; justify-content:flex-end; margin-top:12px;">
+                            <button class="btn btn-primary btn-glow" id="quickTailorTextBtn" onclick="runSingleJob()">
+                                <span class="btn-text">&#x2728; Tailor Resume</span>
+                                <span class="btn-spinner hidden"></span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Result -->
+                    <div class="tailor-result hidden" id="quickTailorResult">
+                        <div class="result-card success">
+                            <div class="result-info">
+                                <span class="result-icon">&#x2705;</span>
+                                <div>
+                                    <strong id="resultJobTitle">-</strong>
+                                    <span id="resultCompany" class="result-company">-</span>
+                                </div>
+                            </div>
+                            <div class="result-actions">
+                                <a class="btn btn-accent btn-sm" id="downloadPdfBtn" href="#" download>
+                                    &#x1F4E5; Download PDF
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== Tab: Auto Apply ===== -->
+        <section class="tab-panel" id="panel-apply">
+            <div class="card hero-card">
+                <div class="card-header">
+                    <h2><span class="card-icon">&#x1F4E8;</span> Auto Apply</h2>
+                    <span class="card-subtitle">Select a tailored resume and let the agent fill application forms</span>
+                </div>
+                <div class="card-body">
+                    <div class="apply-form">
+                        <!-- Resume Picker -->
+                        <div class="apply-field">
+                            <label class="field-label">
+                                <span class="field-label-icon">&#x1F4C4;</span> Select Resume
+                            </label>
+                            <div class="resume-picker-group">
+                                <select id="resumeSelect" class="input-field resume-select">
+                                    <option value="">-- Loading resumes... --</option>
+                                </select>
+                                <button class="btn btn-ghost btn-sm" onclick="loadResumes()" title="Refresh list">&#x21BB;</button>
+                            </div>
+                        </div>
+
+                        <!-- Application URL -->
+                        <div class="apply-field">
+                            <label class="field-label">
+                                <span class="field-label-icon">&#x1F310;</span> Application URL
+                            </label>
+                            <input 
+                                type="url" 
+                                id="applyUrlInput" 
+                                class="input-field" 
+                                placeholder="https://company.wd5.myworkdayjobs.com/..." 
+                                autocomplete="off"
+                            >
+                        </div>
+
+                        <!-- Start Button -->
+                        <button class="btn btn-accent btn-lg btn-glow apply-start-btn" id="startApplyBtn" onclick="startAutoApply()">
+                            &#x1F680; Start Auto-Apply
+                        </button>
+                    </div>
+
+                    <!-- Apply Status -->
+                    <div class="hidden" id="applyStatusSection">
+                        <div class="apply-status-card">
+                            <div class="apply-status-header">
+                                <div class="apply-status-info">
+                                    <span class="apply-status-icon">&#x1F916;</span>
+                                    <strong>Auto-Apply Progress</strong>
+                                </div>
+                                <span class="status-badge" id="applyStatusBadge">Running</span>
+                            </div>
+                            <p class="apply-status-message" id="applyMessage">Starting auto-apply...</p>
+                            <div id="applyScreenshot" class="apply-screenshot hidden">
+                                <img id="applyScreenshotImg" src="" alt="Current form state">
+                            </div>
+                            <div id="applyConfirmSection" class="hidden apply-confirm">
+                                <button class="btn btn-accent btn-glow" id="confirmSubmitBtn" onclick="confirmApply()">
+                                    &#x2705; Confirm & Submit
+                                </button>
+                                <button class="btn btn-outline" onclick="cancelApply()">
+                                    &#x274C; Cancel
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== Tab: Auto Pipeline ===== -->
+        <section class="tab-panel" id="panel-pipeline">
+            <div class="card hero-card">
+                <div class="card-header">
+                    <h2><span class="card-icon">&#x1F916;</span> Auto Pipeline</h2>
+                    <span class="card-subtitle">Scrape LinkedIn, filter roles, tailor resumes, and email results</span>
+                </div>
+                <div class="card-body pipeline-body">
+                    <div class="pipeline-steps">
+                        <div class="pipeline-step">
+                            <span class="step-num">1</span>
+                            <span>Scrape LinkedIn for matching jobs</span>
+                        </div>
+                        <div class="pipeline-step">
+                            <span class="step-num">2</span>
+                            <span>Filter by role & company tier</span>
+                        </div>
+                        <div class="pipeline-step">
+                            <span class="step-num">3</span>
+                            <span>Tailor resume for each job</span>
+                        </div>
+                        <div class="pipeline-step">
+                            <span class="step-num">4</span>
+                            <span>Generate PDFs & email results</span>
+                        </div>
+                    </div>
+                    <button class="btn btn-accent btn-lg btn-glow" id="runAgentBtn" onclick="runFullPipeline()">
+                        &#x1F680; Run Agent Now
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== Bottom Grid: Config + History + Logs ===== -->
+        <div class="grid-3col">
+            <!-- Config (Collapsible) -->
+            <section class="card config-card" id="configSection">
+                <div class="card-header clickable" onclick="document.getElementById('configBody').classList.toggle('collapsed')">
+                    <h2><span class="card-icon">&#x2699;</span> Configuration</h2>
+                    <span class="collapse-icon">&#x25BC;</span>
+                </div>
+                <div class="card-body config-body" id="configBody">
+                    <details class="config-group" open>
+                        <summary class="config-group-title">LLM Settings</summary>
+                        <div class="config-fields">
+                            <div class="field">
+                                <label for="cfgGeminiModel">Gemini Model</label>
+                                <input type="text" id="cfgGeminiModel" class="input-field">
+                            </div>
+                            <div class="field">
+                                <label for="cfgOpenaiModel">OpenAI Model</label>
+                                <input type="text" id="cfgOpenaiModel" class="input-field">
+                            </div>
+                            <div class="field">
+                                <label for="cfgTemperature">Temperature</label>
+                                <input type="number" id="cfgTemperature" class="input-field" step="0.1" min="0" max="2">
+                            </div>
+                        </div>
+                    </details>
+                    <details class="config-group">
+                        <summary class="config-group-title">Job Search</summary>
+                        <div class="config-fields">
+                            <div class="field full-width">
+                                <label for="cfgKeywords">Search Keywords</label>
+                                <textarea id="cfgKeywords" class="input-field textarea" rows="2"></textarea>
+                            </div>
+                            <div class="field">
+                                <label for="cfgLocation">Location</label>
+                                <input type="text" id="cfgLocation" class="input-field">
+                            </div>
+                            <div class="field">
+                                <label for="cfgJobLimit">Job Limit</label>
+                                <input type="number" id="cfgJobLimit" class="input-field" min="1" max="20">
+                            </div>
+                            <div class="field">
+                                <label for="cfgTimeFilter">Time Filter</label>
+                                <select id="cfgTimeFilter" class="input-field">
+                                    <option value="past_24_hours">Past 24 Hours</option>
+                                    <option value="past_week">Past Week</option>
+                                    <option value="past_month">Past Month</option>
+                                </select>
+                            </div>
+                        </div>
+                    </details>
+                    <details class="config-group">
+                        <summary class="config-group-title">Role Filters</summary>
+                        <div class="config-fields">
+                            <div class="field full-width">
+                                <label for="cfgArchitectKeywords">Include Keywords <span class="hint">(comma-separated)</span></label>
+                                <textarea id="cfgArchitectKeywords" class="input-field textarea" rows="2"></textarea>
+                            </div>
+                            <div class="field full-width">
+                                <label for="cfgExcludedKeywords">Exclude Keywords <span class="hint">(comma-separated)</span></label>
+                                <input type="text" id="cfgExcludedKeywords" class="input-field">
+                            </div>
+                            <div class="field">
+                                <label for="cfgTopTier">Top-Tier Only</label>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="cfgTopTier">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </details>
+                    <details class="config-group">
+                        <summary class="config-group-title">Profile & Links</summary>
+                        <div class="config-fields">
+                            <div class="field full-width">
+                                <label for="cfgResumePath">Resume Path</label>
+                                <input type="text" id="cfgResumePath" class="input-field">
+                            </div>
+                            <div class="field full-width">
+                                <label for="cfgLinkedin">LinkedIn URL</label>
+                                <input type="url" id="cfgLinkedin" class="input-field">
+                            </div>
+                            <div class="field full-width">
+                                <label for="cfgGithub">GitHub URL</label>
+                                <input type="url" id="cfgGithub" class="input-field">
+                            </div>
+                        </div>
+                    </details>
+                    <details class="config-group">
+                        <summary class="config-group-title">Notifications</summary>
+                        <div class="config-fields">
+                            <div class="field full-width">
+                                <label for="cfgReceiverEmail">Receiver Email</label>
+                                <input type="email" id="cfgReceiverEmail" class="input-field">
+                            </div>
+                            <div class="field full-width">
+                                <label for="cfgEmailSubject">Email Subject</label>
+                                <input type="text" id="cfgEmailSubject" class="input-field">
+                            </div>
+                            <div class="field">
+                                <label for="cfgSmtpServer">SMTP Server</label>
+                                <input type="text" id="cfgSmtpServer" class="input-field">
+                            </div>
+                            <div class="field">
+                                <label for="cfgSmtpPort">SMTP Port</label>
+                                <input type="number" id="cfgSmtpPort" class="input-field">
+                            </div>
+                        </div>
+                    </details>
+                    <details class="config-group">
+                        <summary class="config-group-title">PDF Settings</summary>
+                        <div class="config-fields">
+                            <div class="field">
+                                <label for="cfgPdfFormat">Format</label>
+                                <select id="cfgPdfFormat" class="input-field">
+                                    <option value="A4">A4</option>
+                                    <option value="Letter">Letter</option>
+                                    <option value="Legal">Legal</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="cfgPdfMargin">Margin</label>
+                                <input type="text" id="cfgPdfMargin" class="input-field" placeholder="0.75in">
+                            </div>
+                        </div>
+                    </details>
+                    <div class="config-actions">
+                        <button class="btn btn-primary" id="saveConfigBtn" onclick="saveConfig()">
+                            &#x1F4BE; Save
+                        </button>
+                        <button class="btn btn-outline" onclick="loadConfig()">
+                            &#x21BB; Reset
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Run History -->
+            <section class="card history-card">
+                <div class="card-header">
+                    <h2><span class="card-icon">&#x1F4CB;</span> Run History</h2>
+                </div>
+                <div class="card-body">
+                    <div id="runsContainer" class="runs-list">
+                        <p class="empty-state">No runs yet.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Live Logs -->
+            <section class="card logs-card">
+                <div class="card-header">
+                    <h2><span class="card-icon">&#x1F4DC;</span> Live Logs</h2>
+                    <button class="btn btn-ghost btn-sm" onclick="clearLogs()">Clear</button>
+                </div>
+                <div class="card-body">
+                    <div id="logsContainer" class="logs-output">
+                        <p class="empty-state">Logs will appear here when the agent runs.</p>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Toast Container -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

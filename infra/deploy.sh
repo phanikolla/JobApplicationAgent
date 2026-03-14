@@ -17,8 +17,8 @@ AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 ECR_IMAGE_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/job-application-agent:latest"
 
 # Your VPC settings (run 'aws ec2 describe-subnets' to find these)
-SUBNET_ID="subnet-XXXXXXXXXXXXXXXXX"
-SECURITY_GROUP_ID="sg-XXXXXXXXXXXXXXXXX"
+SUBNET_ID="subnet-0599d5337217d34dd"
+SECURITY_GROUP_ID="sg-0976206f4b6b36d52"
 
 # Load secrets from .env (never hardcode these here)
 if [ -f .env ]; then
@@ -28,13 +28,16 @@ fi
 GEMINI_API_KEY="${GEMINI_API_KEY:-}"
 EMAIL_SENDER="${EMAIL_SENDER:-}"
 EMAIL_APP_PASSWORD="${EMAIL_APP_PASSWORD:-}"
-
-# A unique secret for your trigger URL
-# Generate one: python -c "import uuid; print(uuid.uuid4())"
-TRIGGER_TOKEN="REPLACE_WITH_YOUR_RANDOM_TOKEN"
+TRIGGER_TOKEN="${TRIGGER_TOKEN:-}"
 
 if [ -z "$GEMINI_API_KEY" ] || [ -z "$EMAIL_APP_PASSWORD" ]; then
   echo "ERROR: Missing secrets. Copy .env.template to .env and fill in your keys."
+  exit 1
+fi
+
+if [ -z "$TRIGGER_TOKEN" ]; then
+  echo "ERROR: TRIGGER_TOKEN not set in .env file."
+  echo "Generate one with: python -c \"import uuid; print(uuid.uuid4())\""
   exit 1
 fi
 
@@ -98,11 +101,12 @@ echo ""
 echo "=============================================="
 echo "  DEPLOYMENT COMPLETE!"
 echo "=============================================="
-TRIGGER_URL=$(aws cloudformation describe-stacks \
+API_ID=$(aws cloudformation describe-stacks \
   --stack-name job-agent-api \
   --region "$AWS_REGION" \
-  --query "Stacks[0].Outputs[?OutputKey=='TriggerUrl'].OutputValue" \
+  --query "Stacks[0].Outputs[?OutputKey=='ApiId'].OutputValue" \
   --output text)
+TRIGGER_URL="https://${API_ID}.execute-api.${AWS_REGION}.amazonaws.com/prod/trigger?token=${TRIGGER_TOKEN}"
 echo ""
 echo "  Bookmark this URL on your phone:"
 echo "  $TRIGGER_URL"

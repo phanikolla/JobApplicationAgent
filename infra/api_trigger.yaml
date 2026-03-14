@@ -144,3 +144,9 @@ Outputs:
   TriggerUrl:
     Description: Bookmark this URL on your phone to trigger the agent
     Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/prod/trigger?token=${TriggerToken}"
+  
+  ApiId:
+    Description: API Gateway ID for constructing the trigger URL
+    Value: !Ref HttpApi
+    Export:
+      Name: JobAgentApiId

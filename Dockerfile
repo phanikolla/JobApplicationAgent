@@ -36,13 +36,21 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Install Playwright + Chromium browser
 RUN playwright install chromium
 
-# Copy application source
-COPY main.py scraper.py tailor_agent.py notifier.py llm_utils.py resume_manager.py ./
+# Copy the modular application source
+COPY src/ src/
+COPY config.json ./
 
-# Copy the master resume PDF
+# Copy the master resume and applicant profile
 COPY Phani_Kumar_Kolla_profile.pdf .
+COPY applicant_profile.md .
+
+# Copy static frontend files
+COPY static/ static/
 
 # Create output directory
 RUN mkdir -p output
 
-CMD ["python", "main.py"]
+# Expose web dashboard port
+EXPOSE 8000
+
+CMD ["uvicorn", "src.api.server:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,0 +1,48 @@
+{
+  "llm": {
+    "gemini_model": "gemini-2.5-flash",
+    "openai_model": "gpt-4o-mini",
+    "default_temperature": 0.1
+  },
+  "job_search": {
+    "search_keywords": "\"Solutions Architect\" OR \"GEN AI Architect\" OR \"AI Architect\" OR \"Technical Architect\" OR \"Agentic AI Architect\"",
+    "search_location": "India",
+    "job_limit": 3,
+    "time_filter": "past_24_hours"
+  },
+  "role_filters": {
+    "architect_keywords": [
+      "solutions architect",
+      "solution architect",
+      "gen ai architect",
+      "ai architect",
+      "technical architect",
+      "agentic ai architect"
+    ],
+    "excluded_role_keywords": [
+      "engineer",
+      "developer"
+    ],
+    "require_top_tier_company": true
+  },
+  "profile": {
+    "resume_path": "Phani_Kumar_Kolla_profile.pdf",
+    "linkedin_url": "https://www.linkedin.com/in/phanikumarkolla/",
+    "github_url": "https://github.com/phanikolla"
+  },
+  "notification": {
+    "receiver_email": "pkkolla24@gmail.com",
+    "email_subject": "Daily Agent Report: Tailored Job Applications Ready",
+    "smtp_server": "smtp.gmail.com",
+    "smtp_port": 587
+  },
+  "pdf": {
+    "page_format": "A4",
+    "margin": "0.75in"
+  },
+  "apply": {
+    "applicant_profile_path": "applicant_profile.md",
+    "idle_timeout_minutes": 30
+  },
+  "output_dir": "output"
+}

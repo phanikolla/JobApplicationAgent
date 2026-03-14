@@ -6,9 +6,8 @@ from dotenv import load_dotenv
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_core.messages import HumanMessage, SystemMessage
-from llm_utils import get_llm
-
+from src.core.llm import get_llm
+from src.core.config import load_config
 
 from langgraph.graph import StateGraph, START, END
 
@@ -54,9 +53,10 @@ def extract_keywords_node(state: AgentState):
 # Node 2: Tailor Resume
 def tailor_resume_node(state: AgentState):
     logger.info("Node: Tailoring Resume...")
+    cfg = load_config()
     llm = get_llm(temperature=0.2)
     
-    system_instruction = """
+    system_instruction = f"""
     You are an expert Resume Writer and Career Coach. 
     Your task is to take a Master Resume and a Job Description (along with its key ATS keywords), 
     and tailor the Master Resume to perfectly fit the role.
@@ -65,12 +65,14 @@ def tailor_resume_node(state: AgentState):
     1. DO NOT HALLUCINATE experience. Only rephrase and emphasize existing experience.
     2. Naturally integrate the highly relevant extracted keywords into the professional summary and bullet points.
     3. Keep the output focused strictly on the resume content. Do not include extra conversational text like "Here is your resume".
-    4. PUNCTUATION RULE: Absolutely NO em-dashes (`——`). If you need a dash, use a standard hyphen (`-`). Em-dashes break downstream tools.
-    5. FORMATTING RULE: You MUST use EXACTLY this markdown skeleton structure to ensure the PDFs render evenly. Do not omit the '#' header tags. ALWAYS include valid Markdown Links for formatting Contact details (e.g. `[LinkedIn](https://...)`):
+    4. PUNCTUATION RULE: Absolutely NO em-dashes. If you need a dash, use a standard hyphen (-). Em-dashes break downstream tools.
+    5. FORMATTING RULE: You MUST use EXACTLY this markdown skeleton structure to ensure the PDFs render evenly. Do not omit the '#' header tags. ALWAYS use EXACTLY these hardcoded URLs for the contact links - never change them:
+       - LinkedIn: {cfg.profile.linkedin_url}
+       - GitHub: {cfg.profile.github_url}
     6. KEYWORD HIGHLIGHTING: Highlight highly relevant extracted keywords by using **bold** text naturally within your bullet points.
     
     # [Full Name]
-    [Location] | [Phone] | [Email] | [LinkedIn](url) | [GitHub](url)
+    [Location] | [Phone] | [Email] | [LinkedIn]({cfg.profile.linkedin_url}) | [GitHub]({cfg.profile.github_url})
     
     ## PROFESSIONAL SUMMARY
     [1-2 paragraphs here]
@@ -149,5 +151,4 @@ def tailor_for_job(job_title, company_name, job_description, master_resume_text)
     return result["tailored_resume"]
 
 if __name__ == "__main__":
-    # Test execution
     print("Graph builder module compiled successfully.")

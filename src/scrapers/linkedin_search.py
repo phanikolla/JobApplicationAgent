@@ -1,52 +1,45 @@
 import asyncio
 import logging
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
 from bs4 import BeautifulSoup
-from playwright.async_api import async_playwright
+from playwright.sync_api import sync_playwright
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from llm_utils import get_llm
+from src.core.llm import get_llm
+from src.core.config import load_config
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-async def scrape_linkedin_jobs(
-    keywords, 
-    location, 
-    time_filter="past_24_hours", 
-    limit=3
+# Thread pool for running sync Playwright in background
+_executor = ThreadPoolExecutor(max_workers=2)
+
+
+def _scrape_linkedin_jobs_sync(
+    keywords, location, time_filter, limit, cfg
 ):
     """
-    Scrape LinkedIn jobs based on criteria.
-    Uses Playwright to render the dynamic content.
+    Sync Playwright LinkedIn scraping - runs in a thread.
     Returns a list of dicts: [{'title': '', 'company': '', 'link': '', 'description': ''}]
     """
-    
     def is_valid_role(title):
         title_lower = title.lower()
-        if "engineer" in title_lower or "developer" in title_lower:
-            return False
+
+        for excluded in cfg.role_filters.excluded_role_keywords:
+            if excluded in title_lower:
+                return False
             
-        architect_keywords = [
-            "solutions architect", "solution architect", "gen ai architect", 
-            "ai architect", "technical architect", 
-            "agentic ai architect"
-        ]
-        
-        for kw in architect_keywords:
+        for kw in cfg.role_filters.architect_keywords:
             if kw in title_lower:
                 return True
                 
-        # If none of the specific architect keywords match but it doesn't have engineer,
-        # we still reject if it totally misses the keywords, but since LinkedIn search 
-        # is broad we enforce the keywords strictly here.
         return False
         
     def is_top_tier_company(company_name: str) -> bool:
-        """
-        Uses an LLM to quickly evaluate if a company is a global top-tier, 
-        Big Tech, or Fortune 500 entity.
-        """
+        if not cfg.role_filters.require_top_tier_company:
+            return True
+
         if not company_name or company_name.lower() == "unknown company":
             return False
             
@@ -61,13 +54,15 @@ async def scrape_linkedin_jobs(
             return result == "YES"
         except Exception as e:
             logger.error(f"Error evaluating company tier: {e}")
-            # Err on the side of caution or allow fallback if LLM fails (allowing for now to not break pipeline)
             return True
     
     # Map time filter to LinkedIn URL param
-    # r86400 = 24 hours
-    # r604800 = past week
-    tpr = "r86400" if time_filter == "past_24_hours" else ""
+    time_filter_map = {
+        "past_24_hours": "r86400",
+        "past_week": "r604800",
+        "past_month": "r2592000",
+    }
+    tpr = time_filter_map.get(time_filter, "r86400")
     
     encoded_keywords = urllib.parse.quote(keywords)
     encoded_location = urllib.parse.quote(location)
@@ -78,32 +73,29 @@ async def scrape_linkedin_jobs(
     
     jobs_data = []
     
-    async with async_playwright() as p:
-        # Launching browser (headless=True for automation)
-        browser = await p.chromium.launch(headless=True)
-        # Randomize user agent to avoid basic blocks
-        context = await browser.new_context(
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         )
-        page = await context.new_page()
+        page = context.new_page()
         
         try:
-            await page.goto(search_url, wait_until="domcontentloaded", timeout=60000)
+            page.goto(search_url, wait_until="domcontentloaded", timeout=60000)
             
             # Wait for job cards to load
-            await page.wait_for_selector("ul.jobs-search__results-list > li", timeout=15000)
+            page.wait_for_selector("ul.jobs-search__results-list > li", timeout=15000)
             
             # Extract basic job links from the search page
-            cards = await page.locator("ul.jobs-search__results-list > li").element_handles()
+            cards = page.locator("ul.jobs-search__results-list > li").element_handles()
             
             job_links = []
-            for card in cards[:limit * 10]: # Increase pool to account for heavy Fortune 500 filtering
+            for card in cards[:limit * 10]:
                 try:
-                    link_element = await card.query_selector("a.base-card__full-link, a.base-search-card__title")
+                    link_element = card.query_selector("a.base-card__full-link, a.base-search-card__title")
                     if link_element:
-                        href = await link_element.get_attribute("href")
+                        href = link_element.get_attribute("href")
                         if href and "?" in href:
-                            # Clean up the link
                             href = href.split("?")[0]
                         job_links.append(href)
                 except Exception as e:
@@ -120,37 +112,34 @@ async def scrape_linkedin_jobs(
                     
                 try:
                     logger.info(f"Scraping job: {link}")
-                    await page.goto(link, wait_until="domcontentloaded", timeout=30000)
+                    page.goto(link, wait_until="domcontentloaded", timeout=30000)
                     
-                    # Sometimes LinkedIn redirects or asks for login, wait for title
-                    await page.wait_for_selector("h1.top-card-layout__title", timeout=10000)
+                    page.wait_for_selector("h1.top-card-layout__title", timeout=10000)
                     
-                    title = await page.locator("h1.top-card-layout__title").inner_text()
-                    company = await page.locator("a.topcard__org-name-link").inner_text()
+                    title = page.locator("h1.top-card-layout__title").inner_text()
+                    company = page.locator("a.topcard__org-name-link").inner_text()
                     
                     if not title or not is_valid_role(title.strip()):
                         logger.info(f"Skipping job: '{title}' - does not match exact Architect criteria or is an Engineer role.")
                         continue
                         
-                    # LLM Company Filter Check
                     if not is_top_tier_company(company):
                         logger.info(f"Skipping job: '{title}' at '{company}' - not evaluated as a top-tier global/Fortune 500 company.")
                         continue
                         
                     # Click 'Show more' button for description if it exists
                     try:
-                        show_more_btn = await page.query_selector("button[data-tracking-control-name='public_jobs_show-more-html-btn']")
+                        show_more_btn = page.query_selector("button[data-tracking-control-name='public_jobs_show-more-html-btn']")
                         if show_more_btn:
-                            await show_more_btn.click()
-                            await page.wait_for_timeout(500)
+                            show_more_btn.click()
+                            page.wait_for_timeout(500)
                     except:
                         pass
                     
-                    desc_element = await page.query_selector("div.show-more-less-html__markup")
+                    desc_element = page.query_selector("div.show-more-less-html__markup")
                     
                     if desc_element:
-                        # Extract inner HTML and convert to text using BeautifulSoup for cleaner text
-                        desc_html = await desc_element.inner_html()
+                        desc_html = desc_element.inner_html()
                         soup = BeautifulSoup(desc_html, "html.parser")
                         description = soup.get_text(separator="\n").strip()
                     else:
@@ -170,14 +159,46 @@ async def scrape_linkedin_jobs(
             logger.error(f"Error during job search: {e}")
             
         finally:
-            await browser.close()
+            browser.close()
             
     return jobs_data
+
+
+async def scrape_linkedin_jobs(
+    keywords=None, 
+    location=None, 
+    time_filter=None, 
+    limit=None
+):
+    """
+    Scrape LinkedIn jobs based on criteria.
+    Uses sync Playwright in a thread pool to avoid event loop conflicts.
+    Returns a list of dicts: [{'title': '', 'company': '', 'link': '', 'description': ''}]
+    """
+    cfg = load_config()
+
+    # Use config defaults if not provided as arguments
+    if keywords is None:
+        keywords = cfg.job_search.search_keywords
+    if location is None:
+        location = cfg.job_search.search_location
+    if time_filter is None:
+        time_filter = cfg.job_search.time_filter
+    if limit is None:
+        limit = cfg.job_search.job_limit
+
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        _executor,
+        _scrape_linkedin_jobs_sync,
+        keywords, location, time_filter, limit, cfg
+    )
+
 
 if __name__ == "__main__":
     # Test script run
     async def run_test():
-        jobs = await scrape_linkedin_jobs("Solutions Architect", "India", limit=1)
+        jobs = await scrape_linkedin_jobs(keywords="Solutions Architect", location="India", limit=1)
         import pprint
         pprint.pprint(jobs)
         

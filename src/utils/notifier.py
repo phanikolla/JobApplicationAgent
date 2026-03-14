@@ -2,23 +2,55 @@ import logging
 import os
 import markdown
 import smtplib
+from concurrent.futures import ThreadPoolExecutor
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
-from playwright.async_api import async_playwright
+from playwright.sync_api import sync_playwright
+from src.core.config import load_config
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Thread pool for running sync Playwright in background
+_executor = ThreadPoolExecutor(max_workers=2)
+
+
+def _generate_pdf_sync(styled_html: str, output_filename: str, page_format: str, margin: str) -> str | None:
+    """Sync Playwright PDF generation - runs in a thread."""
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.set_content(styled_html)
+            page.pdf(
+                path=output_filename,
+                format=page_format,
+                margin={
+                    "top": margin,
+                    "bottom": margin,
+                    "left": margin,
+                    "right": margin
+                }
+            )
+            browser.close()
+        return output_filename
+    except Exception as e:
+        logger.error(f"Playwright PDF generation error: {e}")
+        return None
+
+
 async def generate_pdf(markdown_text, output_filename):
     """
     Converts markdown text to a clean PDF using Playwright (Chromium).
+    Uses sync Playwright in a thread pool to avoid event loop conflicts.
     """
+    import asyncio
+
+    cfg = load_config()
     logger.info(f"Generating PDF: {output_filename}")
     try:
         html_text = markdown.markdown(markdown_text)
-        
-        import hashlib
         
         styled_html = f"""
         <html>
@@ -125,18 +157,18 @@ async def generate_pdf(markdown_text, output_filename):
                 output_filename = f"{base}_{timestamp}{ext}"
                 logger.warning(f"File locked, saving to alternative name: {output_filename}")
         
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            page = await browser.new_page()
-            await page.set_content(styled_html)
-            await page.pdf(
-                path=output_filename, 
-                format="A4", 
-                margin={"top": "0.75in", "bottom": "0.75in", "left": "0.75in", "right": "0.75in"}
-            )
-            await browser.close()
-            
-        return output_filename
+        # Run sync Playwright in a thread to avoid event loop conflicts
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            _executor,
+            _generate_pdf_sync,
+            styled_html,
+            output_filename,
+            cfg.pdf.page_format,
+            cfg.pdf.margin
+        )
+        
+        return result
     except Exception as e:
         logger.error(f"Error generating PDF {output_filename}: {e}")
         return None
@@ -145,6 +177,7 @@ def send_summary_email(receiver_email, summary_markdown, attachment_paths=None):
     """
     Sends an email to the user with the summary and tailored resumes attached.
     """
+    cfg = load_config()
     logger.info(f"Sending summary email to {receiver_email}...")
     
     sender_email = os.getenv("EMAIL_SENDER")
@@ -157,7 +190,7 @@ def send_summary_email(receiver_email, summary_markdown, attachment_paths=None):
     msg = MIMEMultipart()
     msg['From'] = sender_email
     msg['To'] = receiver_email
-    msg['Subject'] = "Daily Agent Report: Tailored Job Applications Ready"
+    msg['Subject'] = cfg.notification.email_subject
     
     # Convert summary to HTML
     body_html = markdown.markdown(summary_markdown)
@@ -179,7 +212,7 @@ def send_summary_email(receiver_email, summary_markdown, attachment_paths=None):
 
     # Send
     try:
-        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server = smtplib.SMTP(cfg.notification.smtp_server, cfg.notification.smtp_port)
         server.starttls()
         server.login(sender_email, app_password)
         text = msg.as_string()
