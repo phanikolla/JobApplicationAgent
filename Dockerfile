@@ -50,7 +50,7 @@ COPY static/ static/
 # Create output directory
 RUN mkdir -p output
 
-# Expose web dashboard port
-EXPOSE 8000
+# Expose web dashboard port (8080 required by Google Cloud Run)
+EXPOSE 8080
 
-CMD ["uvicorn", "src.api.server:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "src.api.server:app", "--host", "0.0.0.0", "--port", "8080"]
